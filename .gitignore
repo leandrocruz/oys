@@ -2,3 +2,6 @@
 .metals
 .scala-build
 .vscode
+oys.jar
+oys
+oys.build_artifacts.txt
