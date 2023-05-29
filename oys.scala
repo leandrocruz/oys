@@ -56,7 +56,10 @@ object git {
   @main("git options")
   case class GitOptions(
     @arg(doc = "show project status for each module")
-    status: Flag
+    status: Flag,
+
+    @arg(doc = "run 'git CMD' for each module")
+    exec: Option[String]
   )
 
   case class GitRepo(name: String, file: File, branch: String, commit: String, status: String)
@@ -64,6 +67,18 @@ object git {
   case class GitCommand(options: GitOptions) extends Command {
 
     override def execute(global: GlobalConfig, local: LocalConfig): Task[String] = {
+      
+      def forall[T](fn: File => Task[T]) = {
+
+        def isGitRepo(dir: File): Boolean = (dir / ".git").exists
+
+        for {
+          roots      <- local.roots
+          candidates <- ZIO.attempt(roots.filter(isGitRepo))
+          repos      <- ZIO.foreachPar(candidates)(fn)
+        } yield repos
+      }
+
       def status: Task[String] = {
 
         def toString(repositories: Seq[GitRepo]): String = {
@@ -122,8 +137,6 @@ object git {
           ).render()
         }
 
-        def isGitRepo(dir: File): Boolean = (dir / ".git").exists
-
         def gitInfo(dir: File): Task[GitRepo] = {
           for {
             branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
@@ -133,20 +146,37 @@ object git {
         }
 
         for {
-          roots      <- local.roots
-          candidates <- ZIO.attempt(roots.filter(isGitRepo))
-          repos      <- ZIO.foreachPar(candidates)(gitInfo)
+          repos <- forall(gitInfo)
         } yield toString(repos)
       }
 
-      if(options.status.value) status
-      else ZIO.fail(new Exception("Please specify an action"))
+      def exec(cmd: String): Task[String] = {
+        
+        def fetchRepo(dir: File): Task[String] = {
+          for {
+            result <- run(dir, s"git $cmd").map(_.trim())
+          } yield s"$dir => $result"
+        }
+
+        def toString(results: Seq[String]): String = {
+          s"Git Fetch\n${results.mkString("\n")}"
+        }
+        
+        for {
+          repos <- forall(fetchRepo)
+        } yield toString(repos)
+      }
+
+      (options.status.value, options.exec) match
+        case (true, _)      => status
+        case (_, Some(cmd)) => exec(cmd)
+        case _              => ZIO.fail(new Exception("Please specify an action"))
     }
   }
 
   def run(dir: File, cmd: String): Task[String] = {
     ZIO.attempt(Process(cmd, dir.toJava).!!)
-       .mapError(e => new Exception(s"Error running command '$cmd'", e))
+       .mapError(e => new Exception(s"Error running command '$cmd' at '$dir'", e))
   }
 }
 
