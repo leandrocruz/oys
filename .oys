@@ -2,6 +2,6 @@ name = "oys"
 root = ""
 
 modules {
-  inclusions = []
+  inclusions = ["~/dev/projects/oystr/api-website"]
   exclusions = []
 }

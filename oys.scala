@@ -152,19 +152,34 @@ object git {
 
       def exec(cmd: String): Task[String] = {
         
-        def fetchRepo(dir: File): Task[String] = {
+        def execFrom(dir: File): Task[(File, String)] = {
           for {
             result <- run(dir, s"git $cmd").map(_.trim())
-          } yield s"$dir => $result"
+          } yield (dir, result)
         }
 
-        def toString(results: Seq[String]): String = {
-          s"Git Fetch\n${results.mkString("\n")}"
+        def toString(results: Seq[(File, String)]): String = {
+
+          def render(row: Int, col: Column, value: String): Cell = {
+            if(row == 0) {
+              Cell(value).colored(BOLD)
+            } else {
+              Cell(value)
+            }
+          }
+
+          def toRow(item: (File, String)): Row = Row(Seq(item._1.canonicalPath, item._2))
+
+          s"Results for 'git $cmd'\n" + Table(
+            cols       = Seq(Column("DIRECTORY"), Column("RESULT")),
+            rows       = results.map(toRow),
+            renderCell = render
+          ).render()
         }
         
         for {
-          repos <- forall(fetchRepo)
-        } yield toString(repos)
+          results <- forall(execFrom)
+        } yield toString(results)
       }
 
       (options.status.value, options.exec) match
@@ -175,8 +190,18 @@ object git {
   }
 
   def run(dir: File, cmd: String): Task[String] = {
-    ZIO.attempt(Process(cmd, dir.toJava).!!)
-       .mapError(e => new Exception(s"Error running command '$cmd' at '$dir'", e))
+
+    val sb = new StringBuilder()
+    val logger = new ProcessLogger {
+      override def out(s: => String): Unit = sb.append(s).append("\n")
+      override def err(s: => String): Unit = sb.append(RED).append(s).append(RESET).append("\n")
+      override def buffer[T](f: => T) = f
+    }
+
+    Process(cmd, dir.toJava) !< logger match {
+      case 0    => ZIO.succeed(sb.toString())
+      case code => ZIO.fail(new Exception(s"Error running command '$cmd' at '$dir' ($code): ${sb.toString()}"))
+    }
   }
 }
 
@@ -342,22 +367,42 @@ object table {
       def sizeOf(col: Column): Int = {
         cols.zipWithIndex.map { case (c, index) => if(c == col) index else -1 } find { _ >= 0 } match {
           case None      => 20
-          case Some(idx) => rows.map(row => row.values(idx)).map(_.length()).max
+          case Some(idx) => 
+            if(rows.isEmpty) 
+              cols.map(_.name).map(_.length()).max
+            else
+              rows.flatMap(row => row.values(idx).split("\n")).map(_.length()).max
         }
       }
       
       def header: Seq[String] = cols.map(_.name)
       def renderRow(index: Int, values: Seq[String], sizes: Map[Column, Int]): String = {
-        
+
         val byNumber: Map[Int, Column] = cols.zipWithIndex.toMap.map(_.swap)
-        val cells: Seq[String] = values.zipWithIndex.map {
-          case (value, n) => 
-            val col = byNumber(n)
-            val cell = renderCell(index, col, value)
-            val text = cell.value.padTo(sizeOf(col), ' ')
-            cell.color.map(color => s"${color}$text${RESET}").getOrElse(text)
+
+        def renderInnerRow(inner: Seq[String]): String = {
+          val cells: Seq[String] = inner.zipWithIndex.map {
+            case (value, n) =>
+              val col  = byNumber(n)
+              val cell = renderCell(index, col, value)
+              val text = cell.value.padTo(sizeOf(col), ' ')
+              cell.color.map(color => s"${color}$text${RESET}").getOrElse(text)
+          }
+
+          " " + cells.mkString("  ") //•
         }
-        " " + cells.mkString("    ") //•
+
+        def combineLists[A](ss:List[A]*) = {
+          val sa = ss.reverse;
+          (sa.head.map(List(_)) /: sa.tail)(_.zip(_).map(p=>p._2 :: p._1))
+        }
+
+        val count = values.map(_.split("\n").length).max
+        
+        val padded = values.map(_.split("\n").padTo(count, " ").toList).toList
+        val combined = combineLists(padded: _*)
+
+        combined.map(renderInnerRow).mkString("\n")
       }
 
       val sizes = cols.map(col => (col, sizeOf(col))).toMap
@@ -388,3 +433,23 @@ object oys extends ZIOAppDefault {
         )
     } yield result
 }
+
+// @main def test() = {
+
+//   import table.*
+  
+//   def render(row: Int, column: Column, value: String) = Cell(value)
+  
+//   val rows = Seq(
+//     Row(values = Seq("a", "b")),
+//     Row(values = Seq("a\naa", "b\nbb\nbbb"))
+//   )
+  
+//   println {
+//     Table(
+//       cols       = Seq(Column("A"), Column("B")), 
+//       rows       = rows,
+//       renderCell = render
+//     ).render()
+//   }
+// }
