@@ -86,7 +86,7 @@ object git {
         case _        => author
     }
   }
-  case class GitRepo(name: String, file: File, branch: String, commit: String, last: Option[GitLogEntry], status: String)
+  case class GitRepo(name: String, file: File, branch: String, commit: String, tag: String, last: Option[GitLogEntry], status: String)
 
   case class GitCommand(options: GitOptions) extends Command {
 
@@ -158,6 +158,7 @@ object git {
                     repo.commit, 
                     repo.status, 
                     repo.branch, 
+                    repo.tag,
                     repo.name, 
                     repo.last.map(_.date)      .getOrElse(""), 
                     repo.last.map(_.authorName).getOrElse(""), 
@@ -169,7 +170,8 @@ object git {
                 Seq(
                   repo.commit, 
                   repo.status, 
-                  repo.branch, 
+                  repo.branch,
+                  repo.tag, 
                   repo.name
                 )
               )
@@ -220,7 +222,7 @@ object git {
             }
           }
 
-          val base  = Seq(Column("COMMIT"), Column("STATUS"), Column("BRANCH"), Column("NAME"))
+          val base  = Seq(Column("COMMIT"), Column("STATUS"), Column("BRANCH"), Column("TAG"), Column("NAME"))
           val extra = Seq(Column("DATE"), Column("AUTHOR"), Column("MESSAGE"))
           Table(
             cols       = if(options.full.value) base ++ extra else base,
@@ -257,9 +259,10 @@ object git {
             branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
             commit  <- run(dir, "git rev-parse --short HEAD").map(_.trim())
             changes <- run(dir, "git status --porcelain").map(_.trim())
+            tag     <- run(dir, "git describe --tags --abbrev=0").map(_.trim()).orElse(ZIO.succeed(""))
             log     <- run(dir, "git log --format=format:author:%an%ndate:%ar%nmessage:%B%n -1").map(_.trim())
             last    <- parseLog(log)
-          } yield GitRepo(dir.name, dir, branch, commit, last, if(changes.isEmpty()) "clean" else "dirty")
+          } yield GitRepo(dir.name, dir, branch, commit, tag, last, if(changes.isEmpty()) "clean" else "dirty")
         }
 
         for {
