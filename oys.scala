@@ -58,11 +58,24 @@ object git {
     @arg(doc = "show project status for each module")
     status: Flag,
 
+    @arg
+    full: Flag,
+
     @arg(doc = "run 'git CMD' for each module")
     exec: Option[String]
   )
 
-  case class GitRepo(name: String, file: File, branch: String, commit: String, status: String)
+  case class GitLogEntry(commit: String, author: String, date: String, message: String) {
+
+    val re = """([\w\s]+) <(.+)>""".r
+
+    def authorName = {
+      author match
+        case re(name, _) => name
+        case _        => author
+    }
+  }
+  case class GitRepo(name: String, file: File, branch: String, commit: String, last: Option[GitLogEntry], status: String)
 
   case class GitCommand(options: GitOptions) extends Command {
 
@@ -83,7 +96,29 @@ object git {
 
         def toString(repositories: Seq[GitRepo]): String = {
 
-          def toRow(repo: GitRepo) = Row(Seq(repo.commit, repo.status, repo.name, repo.branch))
+          def toRow(repo: GitRepo) = {
+            if(options.full.value) 
+                Row(
+                  Seq(
+                    repo.commit, 
+                    repo.status, 
+                    repo.branch, 
+                    repo.name, 
+                    repo.last.map(_.date)      .getOrElse(""), 
+                    repo.last.map(_.authorName).getOrElse(""), 
+                    repo.last.map(_.message)   .getOrElse("")
+                  )
+                )
+            else 
+              Row(
+                Seq(
+                  repo.commit, 
+                  repo.status, 
+                  repo.branch, 
+                  repo.name
+                )
+              )
+          }
           def byName(r1: GitRepo, r2: GitRepo): Boolean = (r1.name compareTo r2.name) < 0
           def byBranch(r1: GitRepo, r2: GitRepo): Boolean = {
             
@@ -130,19 +165,40 @@ object git {
             }
           }
 
+          val base  = Seq(Column("COMMIT"), Column("STATUS"), Column("BRANCH"), Column("NAME"))
+          val extra = Seq(Column("DATE"), Column("AUTHOR"), Column("MESSAGE"))
           Table(
-            cols       = Seq(Column("COMMIT"), Column("STATUS"), Column("NAME"), Column("BRANCH")),
+            cols       = if(options.full.value) base ++ extra else base,
             rows       = rows.toSeq,
             renderCell = render
           ).render()
         }
 
         def gitInfo(dir: File): Task[GitRepo] = {
+          def parseLog(str: String): Task[Option[GitLogEntry]] = ZIO.attempt {
+            
+            def clean(value: String) = value.drop(1).trim()
+
+            if(options.full.value) {
+              Some {
+                str.split("\n").foldLeft(GitLogEntry("", "", "", "")) {
+                  case (entry, line) => 
+                    line.splitAt(line.indexOf(":")) match
+                      case ("Author", value) => entry.copy(author = clean(value))
+                      case ("Date"  , value) => entry.copy(date   = clean(value))
+                      case line              => println(line); entry                
+                }
+              }
+            } else None
+          }
+
           for {
             branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
             commit  <- run(dir, "git rev-parse --short HEAD").map(_.trim())
             changes <- run(dir, "git status --porcelain").map(_.trim())
-          } yield GitRepo(dir.name, dir, branch, commit, if(changes.isEmpty()) "clean" else "dirty")
+            log     <- run(dir, "git log -1").map(_.trim())
+            last    <- parseLog(log)
+          } yield GitRepo(dir.name, dir, branch, commit, last, if(changes.isEmpty()) "clean" else "dirty")
         }
 
         for {
