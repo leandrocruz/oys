@@ -202,7 +202,7 @@ object git {
             branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
             commit  <- run(dir, "git rev-parse --short HEAD").map(_.trim())
             changes <- run(dir, "git status --porcelain").map(_.trim())
-            log     <- run(dir, "git log --format=format:author:%an%ndate:%ar%nmessage:%b%n -1").map(_.trim())
+            log     <- run(dir, "git log --format=format:author:%an%ndate:%ar%nmessage:%B%n -1").map(_.trim())
             last    <- parseLog(log)
           } yield GitRepo(dir.name, dir, branch, commit, last, if(changes.isEmpty()) "clean" else "dirty")
         }
