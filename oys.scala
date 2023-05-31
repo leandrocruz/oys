@@ -53,6 +53,7 @@ object git {
   import better.files.*
   import sys.process.*
   import java.text.Normalizer
+  import scala.util.{Try, Success, Failure}
 
   @main("git options")
   case class GitOptions(
@@ -64,6 +65,9 @@ object git {
 
     @arg(doc = "fast forward each repo by merging the master and develop branches if they can be fast forwarded")
     ff: Flag,
+
+    @arg
+    debug: Flag,
 
     @arg(doc = "run 'git CMD' for each module")
     exec: Option[String]
@@ -82,6 +86,8 @@ object git {
   case class GitRepo(name: String, file: File, branch: String, commit: String, last: Option[GitLogEntry], status: String)
 
   case class GitCommand(options: GitOptions) extends Command {
+
+    def run = runCommand(options.debug.value)
 
     override def execute(global: GlobalConfig, local: LocalConfig): Task[String] = {
       
@@ -285,20 +291,24 @@ object git {
     }
   }
 
-  def run(dir: File, cmd: String): Task[String] = {
+  def runCommand(debug: Boolean = false)(dir: File, cmd: String): Task[String] = {
 
+    if(debug) println(s"+ Executing $cmd from $dir")
     val sb = new StringBuilder()
     val logger = new ProcessLogger {
-      def append(value: String) = if(value.nonEmpty) sb.append(value).append("\n")
-      override def out(s: => String): Unit = append(s)
-      override def err(s: => String): Unit = append(s)
+      def append(value: String, color: String) = {
+        if(debug) println(s"> ${color}$value${RESET}")
+        if(value.nonEmpty) sb.append(value).append("\n")
+      }
+      override def out(s: => String): Unit = append(s, GREEN)
+      override def err(s: => String): Unit = append(s, RED)
       override def buffer[T](f: => T) = f
     }
 
-    Process(cmd, dir.toJava) !< logger match {
-      case 0    => ZIO.succeed(sb.toString())
-      case code => ZIO.fail(new Exception(s"Error running command '$cmd' at '$dir' ($code): ${sb.toString()}"))
-    }
+    Try(Process(cmd, dir.toJava) !< logger) match
+      case Success(0)     => ZIO.succeed(sb.toString())
+      case Success(code)  => ZIO.fail(new Exception(s"Error running command '$cmd' at '$dir' ($code): ${sb.toString()}"))
+      case Failure(error) => ZIO.fail(new Exception(s"Error running command '$cmd' at '$dir'", error))
   }
 }
 
