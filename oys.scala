@@ -189,9 +189,10 @@ object git {
                 str.split("\n").foldLeft(GitLogEntry("", "", "", "")) {
                   case (entry, line) => 
                     line.splitAt(line.indexOf(":")) match
-                      case ("Author", value) => entry.copy(author = clean(value))
-                      case ("Date"  , value) => entry.copy(date   = clean(value))
-                      case line              => entry                
+                      case ("author" , value) => entry.copy(author  = clean(value))
+                      case ("date"   , value) => entry.copy(date    = clean(value))
+                      case ("message", value) => entry.copy(message = clean(value))
+                      case _                  => entry.copy(message = entry.message + "\n" + line.trim())
                 }
               }
             } else None
@@ -201,7 +202,7 @@ object git {
             branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
             commit  <- run(dir, "git rev-parse --short HEAD").map(_.trim())
             changes <- run(dir, "git status --porcelain").map(_.trim())
-            log     <- run(dir, "git log -1").map(_.trim())
+            log     <- run(dir, "git log --format=format:author:%an%ndate:%ar%nmessage:%b%n -1").map(_.trim())
             last    <- parseLog(log)
           } yield GitRepo(dir.name, dir, branch, commit, last, if(changes.isEmpty()) "clean" else "dirty")
         }
