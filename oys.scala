@@ -62,6 +62,9 @@ object git {
     @arg
     full: Flag,
 
+    @arg(doc = "fast forward each repo by merging the master and develop branches if they can be fast forwarded")
+    ff: Flag,
+
     @arg(doc = "run 'git CMD' for each module")
     exec: Option[String]
   )
@@ -91,6 +94,42 @@ object git {
           candidates <- ZIO.attempt(roots.filter(isGitRepo))
           repos      <- ZIO.foreachPar(candidates)(fn)
         } yield repos
+      }
+
+      def fastForward: Task[String] = {
+        
+        def ff(dir: File): Task[(File, String)] = {
+          
+          def ffBranch(name: String): Task[String] = {
+            for {
+              hasBranch <- run(dir, s"git checkout $name").map(_ => true).orElseSucceed(false)
+              done      <- ZIO.when(hasBranch) { run(dir, s"git merge origin/$name --ff-only").map(_ => "ff") }
+            } yield s"$name:${done.getOrElse("no branch")}"
+          }
+          
+          for {
+            branch  <- run(dir, "git rev-parse --abbrev-ref HEAD").map(_.trim())
+            master  <- ffBranch("master") .orElse(ZIO.succeed("master:error"))
+            develop <- ffBranch("develop").orElse(ZIO.succeed("develop:error"))
+            _       <- run(dir, s"git checkout $branch")
+          } yield (dir, s"$master, $develop")
+        }
+        
+        def toString(results: Seq[(File, String)]): String = {
+          def toRow(item: (File, String)): Row = {
+            Row(Seq(item._1.canonicalPath, item._2))
+          }
+          
+          Table(
+            cols       = Seq(Column("DIRECTORY"), Column("FAST FORWARDED")),
+            rows       = results.map(toRow),
+            renderCell = DefaultRender
+          ).render()
+        }
+
+        for {
+          results <- forall(ff)
+        } yield toString(results)
       }
 
       def status: Task[String] = {
@@ -223,20 +262,12 @@ object git {
 
         def toString(results: Seq[(File, String)]): String = {
 
-          def render(row: Int, col: Column, value: String): Cell = {
-            if(row == 0) {
-              Cell(value).colored(BOLD)
-            } else {
-              Cell(value)
-            }
-          }
-
-          def toRow(item: (File, String)): Row = Row(Seq(item._1.canonicalPath, item._2))
-
+          def toRow(item: (File, String)): Row = Row(Seq(item._1.canonicalPath, if(item._2.isEmpty) "done" else item._2))
+          
           s"Results for 'git $cmd'\n" + Table(
             cols       = Seq(Column("DIRECTORY"), Column("RESULT")),
             rows       = results.map(toRow),
-            renderCell = render
+            renderCell = DefaultRender
           ).render()
         }
         
@@ -245,10 +276,12 @@ object git {
         } yield toString(results)
       }
 
-      (options.status.value, options.exec) match
-        case (true, _)      => status
-        case (_, Some(cmd)) => exec(cmd)
-        case _              => ZIO.fail(new Exception("Please specify an action"))
+      if      (options.status.value) status
+      else if (options.ff.value)     fastForward
+      else    options.exec match {        
+        case Some(cmd) => exec(cmd)
+        case _         => ZIO.fail(new Exception("Please specify an action"))
+      }
     }
   }
 
@@ -413,6 +446,14 @@ object app {
 }
 
 object table {
+
+  def DefaultRender(row: Int, col: Column, value: String): Cell = {
+    if(row == 0) {
+      Cell(value).colored(BOLD)
+    } else {
+      Cell(value)
+    }
+  }
 
   case class Cell(value: String, color: Option[String] = None) {
     def colored(color: String) = this.copy(color = Some(color))
