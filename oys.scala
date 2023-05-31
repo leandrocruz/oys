@@ -289,8 +289,9 @@ object git {
 
     val sb = new StringBuilder()
     val logger = new ProcessLogger {
-      override def out(s: => String): Unit = sb.append(s).append("\n")
-      override def err(s: => String): Unit = sb.append(RED).append(s).append(RESET).append("\n")
+      def append(value: String) = if(value.nonEmpty) sb.append(value).append("\n")
+      override def out(s: => String): Unit = append(s)
+      override def err(s: => String): Unit = append(s)
       override def buffer[T](f: => T) = f
     }
 
