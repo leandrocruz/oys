@@ -107,10 +107,16 @@ object git {
         def ff(dir: File): Task[(File, String)] = {
           
           def ffBranch(name: String): Task[String] = {
+
+            def read(result: String): String = {
+              if(result.startsWith("Already up to date")) "_"
+              else                                        "ff"
+            }
+
             for {
               hasBranch <- run(dir, s"git checkout $name").map(_ => true).orElseSucceed(false)
-              done      <- ZIO.when(hasBranch) { run(dir, s"git merge origin/$name --ff-only").map(_ => "ff") }
-            } yield s"$name:${done.getOrElse("no branch")}"
+              done      <- ZIO.when(hasBranch) { run(dir, s"git merge origin/$name --ff-only").map(read) }
+            } yield s"$name:${done.getOrElse("x")}"
           }
           
           for {
