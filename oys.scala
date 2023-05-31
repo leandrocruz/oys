@@ -66,6 +66,9 @@ object git {
     @arg(doc = "fast forward each repo by merging the master and develop branches if they can be fast forwarded")
     ff: Flag,
 
+    @arg(doc = "alias to --exec fetch")
+    fetch: Flag,
+
     @arg
     debug: Flag,
 
@@ -288,8 +291,9 @@ object git {
         } yield toString(results)
       }
 
-      if      (options.status.value) status
-      else if (options.ff.value)     fastForward
+      if      ( options.status.value ) status
+      else if ( options.ff.value     ) fastForward
+      else if ( options.fetch.value  ) exec("fetch")
       else    options.exec match {        
         case Some(cmd) => exec(cmd)
         case _         => ZIO.fail(new Exception("Please specify an action"))
