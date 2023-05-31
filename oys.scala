@@ -189,10 +189,11 @@ object git {
                 str.split("\n").foldLeft(GitLogEntry("", "", "", "")) {
                   case (entry, line) => 
                     line.splitAt(line.indexOf(":")) match
-                      case ("author" , value) => entry.copy(author  = clean(value))
-                      case ("date"   , value) => entry.copy(date    = clean(value))
-                      case ("message", value) => entry.copy(message = clean(value))
-                      case _                  => entry.copy(message = entry.message + "\n" + line.trim())
+                      case ("author" , value)  => entry.copy(author  = clean(value))
+                      case ("date"   , value)  => entry.copy(date    = clean(value))
+                      case ("message", value)  => entry.copy(message = clean(value))
+                      case _ if(line.nonEmpty) => entry.copy(message = entry.message + "\n" + line.trim())
+                      case _                   => entry
                 }
               }
             } else None
