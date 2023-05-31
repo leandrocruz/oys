@@ -52,6 +52,7 @@ object git {
   import mainargs.*
   import better.files.*
   import sys.process.*
+  import java.text.Normalizer
 
   @main("git options")
   case class GitOptions(
@@ -177,7 +178,11 @@ object git {
         def gitInfo(dir: File): Task[GitRepo] = {
           def parseLog(str: String): Task[Option[GitLogEntry]] = ZIO.attempt {
             
-            def clean(value: String) = value.drop(1).trim()
+            def clean(value: String) = {
+              Normalizer
+                .normalize(value.drop(1).trim(), Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", ""); 
+            }
 
             if(options.full.value) {
               Some {
@@ -186,7 +191,7 @@ object git {
                     line.splitAt(line.indexOf(":")) match
                       case ("Author", value) => entry.copy(author = clean(value))
                       case ("Date"  , value) => entry.copy(date   = clean(value))
-                      case line              => println(line); entry                
+                      case line              => entry                
                 }
               }
             } else None
