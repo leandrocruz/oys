@@ -3,6 +3,7 @@ root = ""
 
 modules {
   inclusions = [
+    "~/dev/projects/oystr/bot-service-proxy",
     "~/dev/projects/oystr/api-website", 
     "~/dev/projects/oystr/bot-wrapper",
   ]

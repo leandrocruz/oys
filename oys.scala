@@ -293,11 +293,11 @@ object git {
 
   def runCommand(debug: Boolean = false)(dir: File, cmd: String): Task[String] = {
 
-    if(debug) println(s"+ Executing $cmd from $dir")
-    val sb = new StringBuilder()
+    if(debug) println(s"[$dir] Executing $cmd")
+    val sb = new StringBuffer
     val logger = new ProcessLogger {
       def append(value: String, color: String) = {
-        if(debug) println(s"> ${color}$value${RESET}")
+        if(debug) println(s"[$dir] > ${color}$value${RESET}")
         if(value.nonEmpty) sb.append(value).append("\n")
       }
       override def out(s: => String): Unit = append(s, GREEN)
