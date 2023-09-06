@@ -14,6 +14,9 @@ Install the native image (and its prerequisites. See https://www.graalvm.org/22.
 Compile the native binary
 > native-image --no-fallback -jar oys.jar oys
 
+On MacOS
+> scala-cli --power package oys.scala -o oys --native-image -- --no-fallback
+
 ## Run
 
 ### Project
