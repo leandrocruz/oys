@@ -1,3 +1,4 @@
+//> using scala "3.3.0"
 //> using dep "com.github.pathikrit::better-files:3.9.2"
 //> using dep "dev.zio::zio:2.0.13" 
 //> using dep "com.lihaoyi::mainargs:0.5.0"
